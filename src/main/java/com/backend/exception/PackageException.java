@@ -1,2 +1,8 @@
-package com.backend.exception;public class PackageException {
+package com.backend.exception;
+
+public class PackageException extends RuntimeException {
+
+    public PackageException(String message) {
+        super(message);
+    }
 }

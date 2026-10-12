@@ -20,7 +20,10 @@ public class PackageCategory {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(unique = true)
     private String name;
+
+    private Double price;
 
     @OneToMany(mappedBy = "packageCategory", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<PackageTime> packageTimes;

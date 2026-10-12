@@ -14,5 +14,4 @@ public class PackageTimeRequest {
     private LocalTime startTime;
     private LocalTime endTime;
 
-    private PackageCategoryRequest packageCategory;
 }

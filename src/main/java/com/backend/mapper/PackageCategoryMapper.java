@@ -4,8 +4,9 @@ import com.backend.models.PackageCategory;
 import com.backend.models.requests.pacakage.PackageCategoryRequest;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring",uses = {PackageTimeMapper.class})
 public interface PackageCategoryMapper {
 
     PackageCategory toEntity(PackageCategoryRequest request);
@@ -14,5 +15,5 @@ public interface PackageCategoryMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "packageTimes", ignore = true)
-    void update(PackageCategoryRequest request, PackageCategory packageCategory);
+    void update(PackageCategoryRequest request, @MappingTarget PackageCategory packageCategory);
 }

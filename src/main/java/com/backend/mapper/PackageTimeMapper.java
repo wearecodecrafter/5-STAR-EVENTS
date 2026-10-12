@@ -4,6 +4,7 @@ import com.backend.models.PackageTime;
 import com.backend.models.requests.pacakage.PackageTimeRequest;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
 public interface PackageTimeMapper {
@@ -14,5 +15,5 @@ public interface PackageTimeMapper {
 
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "packageCategory", ignore = true)
-    void update(PackageTimeRequest request, PackageTime packageTime);
+    void update(PackageTimeRequest request,@MappingTarget PackageTime packageTime);
 }

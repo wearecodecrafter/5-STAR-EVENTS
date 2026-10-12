@@ -12,19 +12,27 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(CustomerException.class)
-    public ResponseEntity<Map<String, Object>> handleEmergencyAttendanceException(
-            CustomerException ex) {
+    private ResponseEntity<Map<String, Object>> buildResponse(
+            Exception ex, HttpStatus status) {
 
         Map<String, Object> response = new HashMap<>();
-
         response.put("success", false);
         response.put("message", ex.getMessage());
-        response.put("status", HttpStatus.BAD_REQUEST.value());
+        response.put("status", status.value());
         response.put("timestamp", LocalDateTime.now());
 
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
-                .body(response);
+        return ResponseEntity.status(status).body(response);
+    }
+
+    @ExceptionHandler(CustomerException.class)
+    public ResponseEntity<Map<String, Object>> handleCustomerException(
+            CustomerException ex) {
+        return buildResponse(ex, HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(PackageException.class)
+    public ResponseEntity<Map<String, Object>> handlePackageException(
+            PackageException ex) {
+        return buildResponse(ex, HttpStatus.BAD_REQUEST);
     }
 }
