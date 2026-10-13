@@ -29,6 +29,8 @@ import java.util.UUID;
 public class BookingServiceImpl implements BookingService {
 
     /** Statuses that fully occupy a slot. Nobody else can inquire/book it. */
+
+    private final CustomerResolver customerResolver;
     private static final List<BOOKING_STATUS> BLOCKING_STATUSES = List.of(
             BOOKING_STATUS.CONFIRMED_BOOKED,
             BOOKING_STATUS.COMPLETED,
@@ -55,22 +57,19 @@ public class BookingServiceImpl implements BookingService {
     @Override
     public BookingRequest createBooking(BookingRequest request) {
         validateEventDate(request.getEventDate());
-        Customer customer = getCustomer(request);
         PackageTime packageTime = getPackageTime(request);
 
-        // Slot must not be confirmed / owner event. Other pending inquiries are fine.
         List<Booking> slotBookings = bookingRepository
                 .findSlotBookingsForUpdate(request.getEventDate(), packageTime.getId());
         if (slotBookings.stream().anyMatch(b -> BLOCKING_STATUSES.contains(b.getBookingStatus()))) {
             throw new PackageException("This slot is already booked for the selected date.");
         }
 
-        // Same customer shouldn't spam duplicate inquiries for the same slot
+        Customer customer = customerResolver.resolve(request.getCustomer());   // existing or new
+
         if (bookingRepository.existsByEventDateAndPackageTime_IdAndCustomer_IdAndBookingStatus(
-                request.getEventDate(), packageTime.getId(),
-                customer.getId(), BOOKING_STATUS.IN_PROGRESS)) {
-            throw new PackageException(
-                    "This customer already has an inquiry for this slot.");
+                request.getEventDate(), packageTime.getId(), customer.getId(), BOOKING_STATUS.IN_PROGRESS)) {
+            throw new PackageException("This customer already has an inquiry for this slot.");
         }
 
         Booking booking = new Booking();
@@ -194,9 +193,8 @@ public class BookingServiceImpl implements BookingService {
         boolean isOwnerEvent = booking.getBookingStatus() == BOOKING_STATUS.OWNER_EVENT;
         Customer customer = null;
         if (!isOwnerEvent) {
-            customer = getCustomer(request);
+            customer = customerResolver.resolve(request.getCustomer());
         }
-
         // Moving date/time must not collide with a confirmed booking / owner event
         if (isSlotBlocked(request.getEventDate(), packageTime.getId(), id)) {
             throw new PackageException(

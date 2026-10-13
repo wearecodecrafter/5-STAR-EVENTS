@@ -91,4 +91,6 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findCalendarBookings(@Param("start") LocalDate start,
                                        @Param("end") LocalDate end,
                                        @Param("excluded") Collection<BOOKING_STATUS> excluded);
+
+    boolean existsByPackageTime_Id(UUID id);
 }

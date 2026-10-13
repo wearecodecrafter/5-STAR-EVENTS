@@ -35,6 +35,11 @@ public class PackageController {
     public ResponseEntity<?> deletePackage(@RequestParam UUID id){
         return new ResponseEntity<>(packageService.deletePackage(id), HttpStatus.OK);
     }
+    @DeleteMapping("/delete-slot")
+    public ResponseEntity<?> deletePackageTime(@RequestParam UUID id){
+        return new ResponseEntity<>(packageService.deleteTimeSlot(id), HttpStatus.OK);
+    }
+
 
     @GetMapping("/get-all")
     public ResponseEntity<?> getAllPackages(){

@@ -32,13 +32,14 @@ public class QuotationServiceImpl implements QuotationService {
     private final QuotationRepository quotationRepository;
     private final CustomerRepository customerRepository;
     private final QuotationMapper quotationMapper;
+    private final CustomerResolver customerResolver;
     private final PaginationResponseImpl paginationResponse;
 
     @Transactional
     @Override
     public QuotationRequest createQuotation(QuotationRequest request) {
         validate(request);
-        Customer customer = getCustomer(request);
+        Customer customer = customerResolver.resolve(request.getCustomer());
         Quotation quotation = quotationMapper.toEntity(request);
         quotation.setCustomer(customer);
         quotation.setQuotationLineItem(new ArrayList<>());

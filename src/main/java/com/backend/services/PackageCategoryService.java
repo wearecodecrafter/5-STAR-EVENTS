@@ -16,5 +16,7 @@ public interface PackageCategoryService {
 
     Boolean deletePackage(UUID id);
 
+    Boolean deleteTimeSlot(UUID id);
+
     List<PackageCategoryRequest> getAllPackageCategories();
 }
