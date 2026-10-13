@@ -12,6 +12,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/package")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class PackageController {
 
     private final PackageCategoryService packageService;

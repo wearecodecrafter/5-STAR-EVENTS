@@ -12,4 +12,6 @@ public interface PackageTimingRepository extends JpaRepository<PackageTime, UUID
     Optional<PackageTime> findByName(String name);
 
     boolean existsByName(String name);
+    boolean existsByNameIgnoreCase(String name);
+    boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
 }

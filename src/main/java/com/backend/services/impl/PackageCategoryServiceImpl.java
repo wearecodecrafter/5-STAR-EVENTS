@@ -64,53 +64,76 @@ public class PackageCategoryServiceImpl implements PackageCategoryService {
 
     @Transactional
     @Override
-    public PackageCategoryRequest updatePackageCategory(UUID id, PackageCategoryRequest request) {
+    public PackageCategoryRequest updatePackageCategory(
+            UUID id, PackageCategoryRequest request) {
 
         PackageCategory category = packageCategoryRepository.findById(id)
-                .orElseThrow(() -> new PackageException("Package Category not found with id: " + id));
+                .orElseThrow(() -> new PackageException(
+                        "Package Category not found with id: " + id));
 
-        packageCategoryRepository.findByName(request.getName())
-                .filter(existing -> !existing.getId().equals(id))
-                .ifPresent(existing -> {
-                    throw new PackageException("Package Category already exists with name: " + request.getName());
-                });
+        // Validate duplicate category name
+        if (packageCategoryRepository.existsByNameIgnoreCaseAndIdNot(
+                request.getName(), id)) {
+            throw new PackageException(
+                    "Package Category already exists with name: "
+                            + request.getName());
+        }
 
         category.setName(request.getName());
-
+        category.setPrice(request.getPrice());
         if (category.getPackageTimes() == null) {
             category.setPackageTimes(new ArrayList<>());
         }
 
         if (request.getPackageTimes() != null) {
+
             for (PackageTimeRequest req : request.getPackageTimes()) {
 
                 PackageTime time;
 
+                // Update existing package time
                 if (req.getId() != null) {
+
+                    // Find existing package time in this category
                     time = category.getPackageTimes().stream()
                             .filter(t -> t.getId().equals(req.getId()))
                             .findFirst()
                             .orElseThrow(() -> new PackageException(
-                                    "Package Time does not belong to this category: " + req.getId()));
+                                    "Package Time does not belong to this category: "
+                                            + req.getId()));
+
+                    // Check duplicate name only against other package times
+                    boolean duplicate = packageTimingRepository
+                            .existsByNameIgnoreCaseAndIdNot(
+                                    req.getName(), time.getId());
+
+                    if (duplicate) {
+                        throw new PackageException(
+                                "Package Time already exists with name: "
+                                        + req.getName());
+                    }
+
                 } else {
+
+                    // Create a new package time
                     time = new PackageTime();
-                    time.setPackageCategory(category);      // owning side
-                    category.getPackageTimes().add(time);   // inverse side (this was missing)
+                    time.setPackageCategory(category);
+                    category.getPackageTimes().add(time);
+
+                    if (packageTimingRepository.existsByNameIgnoreCase(req.getName())) {
+                        throw new PackageException(
+                                "Package Time already exists with name: "
+                                        + req.getName());
+                    }
                 }
-
-                packageTimingRepository.findByName(req.getName())
-                        .filter(existing -> time.getId() == null || !existing.getId().equals(time.getId()))
-                        .ifPresent(existing -> {
-                            throw new PackageException("Package Time already exists with name: " + req.getName());
-                        });
-
                 time.setName(req.getName());
                 time.setStartTime(req.getStartTime());
                 time.setEndTime(req.getEndTime());
             }
         }
 
-        PackageCategory saved = packageCategoryRepository.save(category); // cascades to times
+        PackageCategory saved = packageCategoryRepository.save(category);
+
         return packageCategoryMapper.toDto(saved);
     }
     @Override

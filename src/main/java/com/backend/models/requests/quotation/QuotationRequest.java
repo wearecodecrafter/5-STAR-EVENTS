@@ -1,7 +1,6 @@
 package com.backend.models.requests.quotation;
 
-import com.backend.models.Customer;
-import jakarta.persistence.*;
+import com.backend.models.requests.CustomerRequest;
 import lombok.*;
 
 import java.time.LocalDate;
@@ -11,13 +10,9 @@ import java.util.UUID;
 @Data
 public class QuotationRequest {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @ManyToOne
-    @JoinColumn(name = "customer_id")
-    private Customer customer;
+    private CustomerRequest customer;
 
     private String eventNature;
 
@@ -25,8 +20,7 @@ public class QuotationRequest {
 
     private String eventVenue;
 
-    @OneToMany(mappedBy = "quotation", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<QuotationLineItem> quotationLineItem;
+    private List<QuotationLineItemRequest> quotationLineItem;
 
     private Double subTotal;
 

@@ -13,4 +13,6 @@ public interface PackageCategoryRepository extends JpaRepository<PackageCategory
     Optional<PackageCategory> findByName(String name);
 
     boolean existsByName(String name);
+
+    boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
 }

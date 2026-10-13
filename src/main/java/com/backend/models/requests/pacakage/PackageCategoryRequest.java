@@ -14,5 +14,7 @@ public class PackageCategoryRequest {
 
     private String name;
 
+    private Double price;
+
     List<PackageTimeRequest> packageTimes;
 }
