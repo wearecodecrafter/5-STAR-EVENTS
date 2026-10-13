@@ -15,6 +15,7 @@ import java.util.UUID;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/quotation")
+@CrossOrigin("*")
 public class QuotationController {
 
     private final QuotationService quotationService;

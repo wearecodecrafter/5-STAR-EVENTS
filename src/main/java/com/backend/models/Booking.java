@@ -15,7 +15,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-public class Booking {
+public class Booking extends BaseAuditableEntity{
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

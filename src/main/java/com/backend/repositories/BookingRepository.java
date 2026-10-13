@@ -17,6 +17,44 @@ import java.util.UUID;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
+
+    @Query("""
+    SELECT COUNT(b)
+    FROM Booking b
+    WHERE MONTH(b.createdAt) = :month
+      AND YEAR(b.createdAt) = :year
+      AND b.bookingStatus = :status
+""")
+    Long countCreatedByMonthAndYear(
+            @Param("month") int month,
+            @Param("year") int year,
+            @Param("status") BOOKING_STATUS status
+    );
+    @Query("""
+    SELECT COUNT(DISTINCT b.eventDate)
+    FROM Booking b
+    WHERE MONTH(b.eventDate) = :month
+      AND YEAR(b.eventDate) = :year
+""")
+    Long countBookedDatesByMonthAndYear(
+            @Param("month") int month,
+            @Param("year") int year
+    );
+
+    @Query("""
+    SELECT b
+    FROM Booking b
+    JOIN FETCH b.customer
+    JOIN FETCH b.packageCategory
+    WHERE b.eventDate >= :currentDate
+      AND b.eventDate <= :endDate
+    ORDER BY b.eventDate ASC
+""")
+    List<Booking> findUpcomingEvents(
+            @Param("currentDate") LocalDate currentDate,
+            @Param("endDate") LocalDate endDate
+    );
+
     @Query("""
     select count(b) > 0 from Booking b
     where b.eventDate = :date

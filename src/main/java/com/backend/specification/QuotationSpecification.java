@@ -45,7 +45,6 @@ public class QuotationSpecification {
                 );
 
             } catch (DateTimeParseException ignored) {
-                // Ignore date search when keyword is not yyyy-MM-dd
             }
 
             return predicates;
