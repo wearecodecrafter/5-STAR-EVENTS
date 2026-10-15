@@ -3,6 +3,8 @@ package com.backend.repositories;
 import com.backend.models.Booking;
 import com.backend.models.enums.BOOKING_STATUS;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -17,6 +19,8 @@ import java.util.UUID;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
 
+
+    List<Booking> findByCustomer_id(UUID id);
 
     @Query("""
     SELECT COUNT(b)
@@ -48,11 +52,13 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     JOIN FETCH b.packageCategory
     WHERE b.eventDate >= :currentDate
       AND b.eventDate <= :endDate
+      AND b.bookingStatus = :status
     ORDER BY b.eventDate ASC
 """)
     List<Booking> findUpcomingEvents(
             @Param("currentDate") LocalDate currentDate,
-            @Param("endDate") LocalDate endDate
+            @Param("endDate") LocalDate endDate,
+            @Param("status") BOOKING_STATUS status
     );
 
     @Query("""
@@ -93,4 +99,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
                                        @Param("excluded") Collection<BOOKING_STATUS> excluded);
 
     boolean existsByPackageTime_Id(UUID id);
+    boolean existsByPackageCategory_Id(UUID id);
+
+
+    Page<Booking> findByBookingStatus(BOOKING_STATUS status, Pageable pageable);
 }

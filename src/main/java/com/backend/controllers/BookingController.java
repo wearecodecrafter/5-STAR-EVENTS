@@ -60,6 +60,11 @@ public class BookingController {
         return new ResponseEntity<>(bookingService.updateStatus(id,status), HttpStatus.OK);
     }
 
+    @GetMapping("/get-by-customer")
+    public ResponseEntity<?> getByCustomer(@RequestParam UUID id){
+        return new ResponseEntity<>(bookingService.getByCustomerId(id),HttpStatus.OK);
+    }
+
     @GetMapping("/calendar")
     public CalendarResponse calendar(
             @RequestParam(defaultValue = "MONTH") CalendarView view,

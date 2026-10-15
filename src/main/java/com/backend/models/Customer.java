@@ -26,6 +26,9 @@ public class Customer implements UserDetails {
 
     @Column(unique = true)
     private String phoneNumber;
+
+    private String email;
+
     private String password;
 
     @OneToMany(mappedBy = "customer",cascade = CascadeType.ALL,orphanRemoval = true)

@@ -1,6 +1,6 @@
 package com.backend.services.impl;
 
-import com.backend.models.Booking;
+
 import com.backend.models.enums.BOOKING_STATUS;
 import com.backend.models.response.DashboardResponse;
 import com.backend.repositories.BookingRepository;
@@ -9,9 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.Month;
 import java.time.YearMonth;
-import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -28,7 +26,7 @@ public class DashboardServiceImpl implements DashboardService {
         LocalDate currentDate = LocalDate.now();
         LocalDate endDate = currentDate.plusDays(15);
         Long upcoming = bookingRepository.findUpcomingEvents(
-                currentDate, endDate).stream().count();
+                currentDate, endDate,BOOKING_STATUS.CONFIRMED_BOOKED).stream().count();
 
         DashboardResponse response = new DashboardResponse();
         response.setTotalBookings(total);

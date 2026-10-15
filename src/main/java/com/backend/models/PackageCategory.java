@@ -6,6 +6,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,6 +26,8 @@ public class PackageCategory {
 
     private Double price;
 
+    private String description;
+
     @OneToMany(mappedBy = "packageCategory", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<PackageTime> packageTimes;
+    private List<Amenities> amenities = new ArrayList<>();
 }

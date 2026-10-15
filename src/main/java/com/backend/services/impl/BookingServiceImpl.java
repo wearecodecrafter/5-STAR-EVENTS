@@ -4,12 +4,14 @@ import com.backend.exception.PackageException;
 import com.backend.mapper.BookingMapper;
 import com.backend.models.Booking;
 import com.backend.models.Customer;
+import com.backend.models.PackageCategory;
 import com.backend.models.PackageTime;
 import com.backend.models.enums.BOOKING_STATUS;
 import com.backend.models.requests.booking.BookingRequest;
 import com.backend.models.response.PaginatedResponse;
 import com.backend.repositories.BookingRepository;
 import com.backend.repositories.CustomerRepository;
+import com.backend.repositories.PackageCategoryRepository;
 import com.backend.repositories.PackageTimingRepository;
 import com.backend.services.BookingService;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,7 +32,7 @@ import java.util.UUID;
 public class BookingServiceImpl implements BookingService {
 
     /** Statuses that fully occupy a slot. Nobody else can inquire/book it. */
-
+    private final PackageCategoryRepository packageCategoryRepository;
     private final CustomerResolver customerResolver;
     private static final List<BOOKING_STATUS> BLOCKING_STATUSES = List.of(
             BOOKING_STATUS.CONFIRMED_BOOKED,
@@ -58,6 +61,7 @@ public class BookingServiceImpl implements BookingService {
     public BookingRequest createBooking(BookingRequest request) {
         validateEventDate(request.getEventDate());
         PackageTime packageTime = getPackageTime(request);
+        PackageCategory packageCategory = getPackageCategory(request);
 
         List<Booking> slotBookings = bookingRepository
                 .findSlotBookingsForUpdate(request.getEventDate(), packageTime.getId());
@@ -65,7 +69,7 @@ public class BookingServiceImpl implements BookingService {
             throw new PackageException("This slot is already booked for the selected date.");
         }
 
-        Customer customer = customerResolver.resolve(request.getCustomer());   // existing or new
+        Customer customer = customerResolver.resolve(request.getCustomer());
 
         if (bookingRepository.existsByEventDateAndPackageTime_IdAndCustomer_IdAndBookingStatus(
                 request.getEventDate(), packageTime.getId(), customer.getId(), BOOKING_STATUS.IN_PROGRESS)) {
@@ -76,14 +80,13 @@ public class BookingServiceImpl implements BookingService {
         booking.setEventDate(request.getEventDate());
         booking.setCustomer(customer);
         booking.setPackageTime(packageTime);
-        booking.setPackageCategory(packageTime.getPackageCategory());
+        booking.setPackageCategory(packageCategory);               // chosen by the customer, not from the slot
         booking.setVenue(request.getVenue());
         booking.setExpectedGuests(request.getExpectedGuests());
-        booking.setIsCateringRequired(
-                request.getIsCateringRequired() != null
-                        ? request.getIsCateringRequired()
-                        : false);
-        booking.setPackageAmount(request.getPackageAmount());
+        booking.setIsCateringRequired(Boolean.TRUE.equals(request.getIsCateringRequired()));
+        booking.setPackageAmount(request.getPackageAmount() != null
+                ? request.getPackageAmount()
+                : packageCategory.getPrice());                     // default to the package price
         booking.setAdvanceAmount(request.getAdvanceAmount());
         booking.setBookingStatus(BOOKING_STATUS.IN_PROGRESS);
         booking.setRemarks(request.getRemarks());
@@ -160,7 +163,6 @@ public class BookingServiceImpl implements BookingService {
         Booking event = new Booking();
         event.setEventDate(request.getEventDate());
         event.setPackageTime(packageTime);
-        event.setPackageCategory(packageTime.getPackageCategory());
         event.setVenue(request.getVenue());
         event.setRemarks(request.getRemarks());          // e.g. "Owner's family function"
         event.setIsCateringRequired(false);
@@ -170,64 +172,124 @@ public class BookingServiceImpl implements BookingService {
         return bookingMapper.toDto(bookingRepository.save(event));
     }
 
-    // ------------------------------------------------------------------
-    // UPDATE
-    // ------------------------------------------------------------------
     @Transactional
     @Override
     public BookingRequest updateBooking(UUID id, BookingRequest request) {
+
         Booking booking = findBooking(id);
-        if (CLOSED_STATUSES.contains(booking.getBookingStatus())) {
-            throw new PackageException("A " + booking.getBookingStatus() + " booking cannot be edited.");
+        BOOKING_STATUS status = booking.getBookingStatus();
+
+        if (CLOSED_STATUSES.contains(status)) {
+            throw new PackageException("A " + status + " booking cannot be edited.");
         }
+
         if (request.getEventDate() == null) {
             throw new PackageException("Event date is required.");
         }
-        if (!request.getEventDate().equals(booking.getEventDate())) {
-            validateEventDate(request.getEventDate());   // only when moving the date
+        boolean dateChanged = !request.getEventDate().equals(booking.getEventDate());
+        if (dateChanged) {
+            validateEventDate(request.getEventDate());
         }
 
-        validateEventDate(request.getEventDate());
+        // 3. Slot, plus customer and package for normal bookings (owner events have neither)
         PackageTime packageTime = getPackageTime(request);
+        boolean isOwnerEvent = status == BOOKING_STATUS.OWNER_EVENT;
 
-        boolean isOwnerEvent = booking.getBookingStatus() == BOOKING_STATUS.OWNER_EVENT;
+        PackageCategory packageCategory = null;
+        if (!isOwnerEvent) {
+            packageCategory = getPackageCategory(request);
+        }
+
+        // 4. Amounts must make sense
+        validateAmounts(request, packageCategory);
+
+        boolean slotChanged = dateChanged
+                || !packageTime.getId().equals(booking.getPackageTime().getId());
+
+        // 5. Lock the target slot and check it
+        if (slotChanged) {
+            List<Booking> targetSlot = bookingRepository
+                    .findSlotBookingsForUpdate(request.getEventDate(), packageTime.getId());
+
+            // a confirmed booking or owner event on the target slot blocks the move
+            boolean blocked = targetSlot.stream()
+                    .anyMatch(b -> !b.getId().equals(id)
+                            && BLOCKING_STATUSES.contains(b.getBookingStatus()));
+            if (blocked) {
+                throw new PackageException("This slot is already booked for the selected date.");
+            }
+
+            // a confirmed booking or owner event that moves takes the slot, so competing
+            // inquiries there are rejected (same rule as confirm)
+            if (status != BOOKING_STATUS.IN_PROGRESS) {
+                targetSlot.stream()
+                        .filter(b -> !b.getId().equals(id))
+                        .filter(b -> b.getBookingStatus() == BOOKING_STATUS.IN_PROGRESS)
+                        .forEach(b -> b.setBookingStatus(BOOKING_STATUS.REJECTED));
+                bookingRepository.saveAll(targetSlot);
+            }
+        }
+
+        // 6. Customer (existing or new). Resolved after the slot check so a failed edit creates no customer.
         Customer customer = null;
         if (!isOwnerEvent) {
             customer = customerResolver.resolve(request.getCustomer());
-        }
-        // Moving date/time must not collide with a confirmed booking / owner event
-        if (isSlotBlocked(request.getEventDate(), packageTime.getId(), id)) {
-            throw new PackageException(
-                    "This slot is already booked for the selected date.");
+
+            // an inquiry moved onto a slot where the same customer already has one
+            if (status == BOOKING_STATUS.IN_PROGRESS && slotChanged
+                    && bookingRepository.existsByEventDateAndPackageTime_IdAndCustomer_IdAndBookingStatus(
+                    request.getEventDate(), packageTime.getId(),
+                    customer.getId(), BOOKING_STATUS.IN_PROGRESS)) {
+                throw new PackageException("This customer already has an inquiry for this slot.");
+            }
         }
 
-        // If a CONFIRMED booking is moved to another slot, competing inquiries
-        // for the new slot must be rejected too.
-        boolean slotChanged =
-                !request.getEventDate().equals(booking.getEventDate())
-                        || !packageTime.getId().equals(booking.getPackageTime().getId());
-
-        if (booking.getBookingStatus() != BOOKING_STATUS.IN_PROGRESS && slotChanged) {
-            bookingRepository
-                    .findSlotBookingsForUpdate(request.getEventDate(), packageTime.getId())
-                    .stream()
-                    .filter(b -> !b.getId().equals(id))
-                    .filter(b -> b.getBookingStatus() == BOOKING_STATUS.IN_PROGRESS)
-                    .forEach(b -> {
-                        b.setBookingStatus(BOOKING_STATUS.REJECTED);
-                        bookingRepository.save(b);
-                    });
-        }
-
-        // NOTE: make sure the mapper ignores bookingStatus, customer, packageTime
-        bookingMapper.update(request, booking);
-        if (customer != null) {
-            booking.setCustomer(customer);
-        }
+        // 7. Apply the changes (status is never changed here; use confirm / updateStatus)
+        booking.setEventDate(request.getEventDate());
         booking.setPackageTime(packageTime);
-        booking.setPackageCategory(packageTime.getPackageCategory());
+        booking.setVenue(request.getVenue());
+        booking.setRemarks(request.getRemarks());
+
+        if (!isOwnerEvent) {
+            boolean packageChanged = booking.getPackageCategory() == null
+                    || !booking.getPackageCategory().getId().equals(packageCategory.getId());
+
+            booking.setCustomer(customer);
+            booking.setPackageCategory(packageCategory);
+            booking.setExpectedGuests(request.getExpectedGuests());
+            booking.setIsCateringRequired(Boolean.TRUE.equals(request.getIsCateringRequired()));
+            booking.setAdvanceAmount(request.getAdvanceAmount());
+
+            if (request.getPackageAmount() != null) {
+                booking.setPackageAmount(request.getPackageAmount());        // owner's own amount
+            } else if (packageChanged || booking.getPackageAmount() == null) {
+                booking.setPackageAmount(packageCategory.getPrice());        // default to the package price
+            }                                                                // otherwise keep the saved amount
+        }
 
         return bookingMapper.toDto(bookingRepository.save(booking));
+    }
+
+    private void validateAmounts(BookingRequest request, PackageCategory category) {
+        Double packageAmount = request.getPackageAmount() != null
+                ? request.getPackageAmount()
+                : (category != null ? category.getPrice() : null);
+        Double advance = request.getAdvanceAmount();
+
+        if (request.getPackageAmount() != null && request.getPackageAmount() < 0) {
+            throw new PackageException("Package amount cannot be negative.");
+        }
+        if (advance != null) {
+            if (advance < 0) {
+                throw new PackageException("Advance amount cannot be negative.");
+            }
+            if (packageAmount != null && advance > packageAmount) {
+                throw new PackageException("Advance amount cannot exceed the package amount.");
+            }
+        }
+        if (request.getExpectedGuests() != null && request.getExpectedGuests() < 0) {
+            throw new PackageException("Expected guests cannot be negative.");
+        }
     }
 
     @Override
@@ -242,6 +304,7 @@ public class BookingServiceImpl implements BookingService {
         return true;
     }
 
+
     @Override
     public PaginatedResponse<BookingRequest> getAllBookings(int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
@@ -250,6 +313,7 @@ public class BookingServiceImpl implements BookingService {
                 .map(bookingMapper::toDto).toList();
         return paginationResponse.buildPaginatedResponse(list, all);
     }
+
 
     // ------------------------------------------------------------------
     // CALENDAR DATA: every booking of a month (frontend derives
@@ -265,6 +329,14 @@ public class BookingServiceImpl implements BookingService {
                 .stream().map(bookingMapper::toDto).toList();
     }
 
+    @Override
+    public List<BookingRequest> getByCustomerId(UUID id) {
+        return bookingRepository.findByCustomer_id(id)
+                .stream()
+                .sorted(Comparator.comparing(Booking::getCreatedAt).reversed())
+                .map(bookingMapper::toDto)
+                .toList();
+    }
     @Transactional
     @Override
     public BookingRequest updateStatus(UUID id, BOOKING_STATUS status) {
@@ -336,6 +408,14 @@ public class BookingServiceImpl implements BookingService {
         }
         return packageTimingRepository.findById(request.getPackageTime().getId())
                 .orElseThrow(() -> new PackageException("Package time not found."));
+    }
+
+    private PackageCategory getPackageCategory(BookingRequest request) {
+        if (request.getPackageCategory() == null || request.getPackageCategory().getId() == null) {
+            throw new PackageException("Package is required.");
+        }
+        return packageCategoryRepository.findById(request.getPackageCategory().getId())
+                .orElseThrow(() -> new PackageException("Package not found."));
     }
 
     private boolean isSlotBlocked(LocalDate date, UUID packageTimeId, UUID excludeId) {

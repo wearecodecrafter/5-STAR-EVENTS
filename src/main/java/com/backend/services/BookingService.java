@@ -25,4 +25,6 @@ public interface BookingService {
     BookingRequest createOwnerEvent(BookingRequest request);
     List<BookingRequest> getBookingsByMonth(int year, int month);
 
+    List<BookingRequest> getByCustomerId(UUID id);
+
 }

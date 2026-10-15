@@ -13,6 +13,7 @@ public interface CustomerMapper {
     @Mapping(target = "password", ignore = true)
     @Mapping(target = "role", ignore = true)
     @Mapping(target = "bookings", ignore = true)
+    @Mapping(target = "email", ignore = true)
     Customer toEntity(CustomerRequest request);
 
     CustomerRequest toDto(Customer customer);

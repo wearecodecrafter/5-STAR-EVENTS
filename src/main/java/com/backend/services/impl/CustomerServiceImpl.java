@@ -8,11 +8,13 @@ import com.backend.models.response.PaginatedResponse;
 import com.backend.repositories.CustomerRepository;
 import com.backend.services.CustomerService;
 import com.backend.services.RoleService;
+import com.backend.specification.CustomerSpecification;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -124,5 +126,24 @@ public class CustomerServiceImpl implements CustomerService {
         Page<Customer> all = customerRepository.findAll(pageable);
         List<CustomerRequest> list = all.getContent().stream().map(customerMapper::toDto).toList();
         return paginationResponse.buildPaginatedResponse(list, all);
+    }
+
+
+    public Page<Customer> searchCustomers(
+            String keyword,
+            int page,
+            int size) {
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        Specification<Customer> specification =
+                CustomerSpecification.searchCustomer(keyword);
+
+        return customerRepository.findAll(specification, pageable);
+    }
+
+    @Override
+    public CustomerRequest forgetPassword() {
+        return null;
     }
 }

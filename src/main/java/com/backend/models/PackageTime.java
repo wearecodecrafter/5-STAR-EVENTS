@@ -25,8 +25,5 @@ public class PackageTime {
     private LocalTime startTime;
     private LocalTime endTime;
 
-    @ManyToOne
-    @JoinColumn(name = "package_category_id")
-    private PackageCategory packageCategory;
 
 }

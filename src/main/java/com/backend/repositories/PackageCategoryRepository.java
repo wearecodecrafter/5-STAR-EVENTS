@@ -15,4 +15,6 @@ public interface PackageCategoryRepository extends JpaRepository<PackageCategory
     boolean existsByName(String name);
 
     boolean existsByNameIgnoreCaseAndIdNot(String name, UUID id);
+
+    boolean existsByNameIgnoreCase(String name);
 }

@@ -1,174 +1,159 @@
 package com.backend.services.impl;
 
 import com.backend.exception.PackageException;
+import com.backend.mapper.AmenitiesMapper;
 import com.backend.mapper.PackageCategoryMapper;
-import com.backend.mapper.PackageTimeMapper;
+import com.backend.models.Amenities;
 import com.backend.models.PackageCategory;
-import com.backend.models.PackageTime;
+import com.backend.models.requests.pacakage.AmenitiesRequest;
 import com.backend.models.requests.pacakage.PackageCategoryRequest;
-import com.backend.models.requests.pacakage.PackageTimeRequest;
 import com.backend.repositories.BookingRepository;
 import com.backend.repositories.PackageCategoryRepository;
-import com.backend.repositories.PackageTimingRepository;
 import com.backend.services.PackageCategoryService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
-
 @Service
 @RequiredArgsConstructor
 public class PackageCategoryServiceImpl implements PackageCategoryService {
 
     private final PackageCategoryRepository packageCategoryRepository;
-    private final PackageTimingRepository packageTimingRepository;
     private final PackageCategoryMapper packageCategoryMapper;
-    private final PackageTimeMapper packageTimeMapper;
-    private final PaginationResponseImpl paginationResponse;
+    private final AmenitiesMapper amenitiesMapper;
     private final BookingRepository bookingRepository;
 
+    // ------------------------------------------------------------------
+    // CREATE
+    // ------------------------------------------------------------------
     @Transactional
     @Override
     public PackageCategoryRequest cratePackageCategory(PackageCategoryRequest request) {
-
-        if (packageCategoryRepository.existsByName(request.getName())) {
+        validate(request);
+        if (packageCategoryRepository.existsByNameIgnoreCase(request.getName().trim())) {
             throw new PackageException("Package Category already exists with name: " + request.getName());
         }
 
         PackageCategory category = packageCategoryMapper.toEntity(request);
-        category.setPackageTimes(new ArrayList<>());
-        Set<UUID> incomingIds = request.getPackageTimes().stream()
-                .map(PackageTimeRequest::getId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        category.setName(request.getName().trim());
+        category.setAmenities(new ArrayList<>());
 
-        category.getPackageTimes().removeIf(t -> !incomingIds.contains(t.getId()) && t.getId() != null);
-        Set<String> seen = new HashSet<>();
-        List<PackageTimeRequest> times =
-                request.getPackageTimes() == null ? List.of() : request.getPackageTimes();
-
-        for (PackageTimeRequest req : times) {
-            if (!seen.add(req.getName())) {
-                throw new PackageException("Duplicate package time in request: " + req.getName());
+        if (request.getAmenities() != null) {
+            for (AmenitiesRequest req : request.getAmenities()) {
+                Amenities amenity = amenitiesMapper.toEntity(req);
+                amenity.setName(req.getName().trim());
+                amenity.setPackageCategory(category);      // owning side
+                category.getAmenities().add(amenity);
             }
-            PackageTime time = packageTimeMapper.toEntity(req);
-            time.setPackageCategory(category);
-            category.getPackageTimes().add(time);
         }
-
-        PackageCategory saved = packageCategoryRepository.save(category);
-        return packageCategoryMapper.toDto(saved);
+        return packageCategoryMapper.toDto(packageCategoryRepository.save(category));
     }
-
     @Transactional
     @Override
     public PackageCategoryRequest updatePackageCategory(UUID id, PackageCategoryRequest request) {
-
         PackageCategory category = packageCategoryRepository.findById(id)
                 .orElseThrow(() -> new PackageException("Package Category not found with id: " + id));
 
-        if (packageCategoryRepository.existsByNameIgnoreCaseAndIdNot(request.getName(), id)) {
+        validate(request);
+        if (packageCategoryRepository.existsByNameIgnoreCaseAndIdNot(request.getName().trim(), id)) {
             throw new PackageException("Package Category already exists with name: " + request.getName());
         }
 
-        category.setName(request.getName());
-        category.setPrice(request.getPrice());
-        if (category.getPackageTimes() == null) {
-            category.setPackageTimes(new ArrayList<>());
+        packageCategoryMapper.update(request, category);   // name, price, description only
+        category.setName(request.getName().trim());
+
+        if (request.getAmenities() != null) {
+            syncAmenities(category, request.getAmenities());
         }
-
-        // null = leave times untouched, empty list = remove all times
-        if (request.getPackageTimes() != null) {
-
-            // 0. the same name twice in one request
-            Set<String> names = new HashSet<>();
-            for (PackageTimeRequest req : request.getPackageTimes()) {
-                if (req.getName() == null || !names.add(req.getName().trim().toLowerCase())) {
-                    throw new PackageException("Duplicate or empty package time name: " + req.getName());
-                }
-            }
-
-            // 1. REMOVE slots that are no longer in the request
-            Set<UUID> incomingIds = request.getPackageTimes().stream()
-                    .map(PackageTimeRequest::getId)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
-
-            List<PackageTime> toRemove = category.getPackageTimes().stream()
-                    .filter(t -> !incomingIds.contains(t.getId()))
-                    .toList();
-
-            for (PackageTime t : toRemove) {
-                if (bookingRepository.existsByPackageTime_Id(t.getId())) {
-                    throw new PackageException("Package time '" + t.getName()
-                            + "' has bookings and cannot be removed.");
-                }
-            }
-            category.getPackageTimes().removeAll(toRemove);   // in place -> orphanRemoval deletes rows
-            packageTimingRepository.flush();                  // so a removed name can be reused below
-
-            // 2. UPDATE existing / ADD new
-            for (PackageTimeRequest req : request.getPackageTimes()) {
-                PackageTime time;
-
-                if (req.getId() != null) {
-                    time = category.getPackageTimes().stream()
-                            .filter(t -> t.getId().equals(req.getId()))
-                            .findFirst()
-                            .orElseThrow(() -> new PackageException(
-                                    "Package Time does not belong to this category: " + req.getId()));
-
-                    if (packageTimingRepository.existsByNameIgnoreCaseAndIdNot(req.getName(), time.getId())) {
-                        throw new PackageException("Package Time already exists with name: " + req.getName());
-                    }
-                } else {
-                    if (packageTimingRepository.existsByNameIgnoreCase(req.getName())) {
-                        throw new PackageException("Package Time already exists with name: " + req.getName());
-                    }
-                    time = new PackageTime();
-                    time.setPackageCategory(category);
-                    category.getPackageTimes().add(time);
-                }
-
-                time.setName(req.getName());
-                time.setStartTime(req.getStartTime());
-                time.setEndTime(req.getEndTime());
-            }
-        }
-
         return packageCategoryMapper.toDto(packageCategoryRepository.save(category));
     }
+
+    private void syncAmenities(PackageCategory category, List<AmenitiesRequest> incoming) {
+        if (category.getAmenities() == null) {
+            category.setAmenities(new ArrayList<>());
+        }
+        List<Amenities> current = category.getAmenities();   // always edit THIS list in place
+
+        // 1. the same amenity twice in one request
+        Set<String> names = new HashSet<>();
+        for (AmenitiesRequest req : incoming) {
+            if (!names.add(req.getName().trim().toLowerCase())) {
+                throw new PackageException("Duplicate amenity in request: " + req.getName());
+            }
+        }
+
+        // 2. every id sent must belong to this package
+        Map<UUID, Amenities> existingById = current.stream()
+                .collect(Collectors.toMap(Amenities::getId, a -> a));
+        for (AmenitiesRequest req : incoming) {
+            if (req.getId() != null && !existingById.containsKey(req.getId())) {
+                throw new PackageException("Amenity does not belong to this package: " + req.getId());
+            }
+        }
+
+        // 3. REMOVE amenities that are no longer in the request (orphanRemoval deletes the rows)
+        Set<UUID> keepIds = incoming.stream()
+                .map(AmenitiesRequest::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        current.removeIf(a -> !keepIds.contains(a.getId()));
+
+        // 4. UPDATE existing / ADD new
+        for (AmenitiesRequest req : incoming) {
+            if (req.getId() != null) {
+                Amenities amenity = existingById.get(req.getId());
+                amenity.setName(req.getName().trim());
+            } else {
+                Amenities amenity = amenitiesMapper.toEntity(req);
+                amenity.setName(req.getName().trim());
+                amenity.setPackageCategory(category);
+                current.add(amenity);
+            }
+        }
+    }
+
+    @Transactional(readOnly = true)
     @Override
     public PackageCategoryRequest getById(UUID id) {
         return packageCategoryRepository.findById(id)
                 .map(packageCategoryMapper::toDto)
-                .orElseThrow(() -> new PackageException(
-                        "Package Category not found with id: " + id));
+                .orElseThrow(() -> new PackageException("Package Category not found with id: " + id));
     }
 
-    @Override
-    public Boolean deletePackage(UUID id) {
-        PackageCategory packageCategory = packageCategoryRepository.findById(id)
-                .orElseThrow(() -> new PackageException(
-                        "Package Category not found with id: " + id));
-        packageCategoryRepository.delete(packageCategory);
-        return true;
-    }
-
-    @Override
-    public Boolean deleteTimeSlot(UUID id) {
-        PackageTime packageTime = packageTimingRepository.findById(id).orElseThrow(() -> new PackageException("Slot not found with id: " + id));
-        packageTimingRepository.delete(packageTime);
-        return true;
-    }
-
+    @Transactional(readOnly = true)
     @Override
     public List<PackageCategoryRequest> getAllPackageCategories() {
-    return packageCategoryRepository.findAll().stream().map(packageCategoryMapper::toDto).toList();
+        return packageCategoryRepository.findAll().stream()
+                .map(packageCategoryMapper::toDto).toList();
+    }
+
+    @Transactional
+    @Override
+    public Boolean deletePackage(UUID id) {
+        PackageCategory category = packageCategoryRepository.findById(id)
+                .orElseThrow(() -> new PackageException("Package Category not found with id: " + id));
+        if (bookingRepository.existsByPackageCategory_Id(id)) {
+            throw new PackageException("This package has bookings and cannot be deleted.");
+        }
+        packageCategoryRepository.delete(category);   // amenities are deleted by cascade
+        return true;
+    }
+
+    private void validate(PackageCategoryRequest request) {
+        if (request.getName() == null || request.getName().isBlank()) {
+            throw new PackageException("Package name is required.");
+        }
+        if (request.getPrice() == null || request.getPrice() < 0) {
+            throw new PackageException("Valid package price is required.");
+        }
+        if (request.getAmenities() != null) {
+            for (AmenitiesRequest a : request.getAmenities()) {
+                if (a.getName() == null || a.getName().isBlank()) {
+                    throw new PackageException("Amenity name cannot be empty.");
+                }
+            }
+        }
     }
 }

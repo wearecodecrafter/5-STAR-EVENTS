@@ -9,11 +9,11 @@ import org.mapstruct.MappingTarget;
 @Mapper(componentModel = "spring")
 public interface PackageTimeMapper {
 
+    @Mapping(target = "id", ignore = true)
     PackageTime toEntity(PackageTimeRequest request);
 
     PackageTimeRequest toDto(PackageTime packageTime);
 
     @Mapping(target = "id", ignore = true)
-    @Mapping(target = "packageCategory", ignore = true)
     void update(PackageTimeRequest request,@MappingTarget PackageTime packageTime);
 }

@@ -7,6 +7,7 @@ import com.backend.models.requests.CustomerRequest;
 import com.backend.repositories.CustomerRepository;
 import com.backend.repositories.RoleRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,6 +17,7 @@ public class CustomerResolver {
 
     private final CustomerRepository customerRepository;
     private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
     /**
      * id present      -> use that existing customer
@@ -52,6 +54,8 @@ public class CustomerResolver {
             Customer customer = new Customer();
             customer.setFullName(req.getFullName().trim());
             customer.setPhoneNumber(phone);
+            customer.setEmail(req.getEmail());
+            customer.setPassword(passwordEncoder.encode(req.getPassword()));
 
             // 4. Assign CUSTOMER role
             Role customerRole = roleRepository.findByRoleName("CUSTOMER")
